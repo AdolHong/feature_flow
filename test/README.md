@@ -28,6 +28,14 @@
    - 连接失败测试
    - JSON模块连接测试
 
+### 功能测试脚本
+
+1. **test_densets.py** - densets数据类型测试
+   - densets数据存储和加载功能测试
+   - 带列名配置的densets测试
+   - 不带列名配置的densets测试
+   - 分隔符和去重策略测试
+
 ## 运行测试
 
 ### 方法1：使用pytest（推荐）
@@ -44,6 +52,9 @@ pytest test/test_redis_connector.py::TestRedisConnector -v
 
 # 运行特定测试方法
 pytest test/test_redis_connector.py::TestRedisConnector::test_json_variable_operations -v
+
+# 运行densets功能测试
+python test/test_densets.py
 ```
 
 ### 方法2：使用unittest
@@ -68,6 +79,9 @@ python run_tests.py coverage
 
 # 查看帮助
 python run_tests.py help
+
+# 运行densets测试
+cd test && python test_densets.py
 ```
 
 ## 测试要求

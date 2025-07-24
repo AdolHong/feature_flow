@@ -138,6 +138,8 @@ class DataLoader:
             return self._load_simple_variable(redis_config, effective_namespace, placeholders, job_datetime)
         elif redis_type == "timeseries":
             return self._load_timeseries(variable_config, effective_namespace, placeholders, job_datetime)
+        elif redis_type == "densets":
+            return self._load_densets(variable_config, effective_namespace, placeholders, job_datetime)
         else:
             raise ValueError(f"不支持的Redis类型: {redis_type}")
     
@@ -364,6 +366,223 @@ class DataLoader:
             raise ValueError(f"不支持的去重策略: {drop_duplicate}")
         
         return df
+
+    def _load_densets(self, variable_config: Dict[str, Any], namespace: str, placeholders: Dict[str, Any], job_datetime: str) -> pd.DataFrame:
+        """
+        加载densets数据
+        
+        Args:
+            variable_config: 变量配置
+            namespace: 命名空间
+            placeholders: 占位符值映射
+            job_datetime: 作业日期时间，格式为 %Y-%m-%d %H:%M:%S
+            
+        Returns:
+            DataFrame格式的densets数据
+        """
+        redis_config = variable_config["redis_config"]
+        
+        # 获取去重策略，默认为"none"
+        drop_duplicate = redis_config.get("drop_duplicate", "none")
+        
+        # 获取分隔符，默认为","
+        split_char = redis_config.get("split", ",")
+        
+        # 获取schema字符串
+        schema_str = redis_config.get("schema")
+        
+        # 获取densets数据
+        densets_data = self._get_densets_data(redis_config, namespace, placeholders, job_datetime)
+        
+        if not densets_data:
+            # 返回空DataFrame
+            return pd.DataFrame()
+        
+        # 转换为DataFrame
+        df = self._convert_densets_to_dataframe(densets_data, drop_duplicate, split_char, schema_str)
+        
+        return df
+    
+    def _get_densets_data(self, redis_config: Dict[str, Any], namespace: str, placeholders: Dict[str, Any], job_datetime: str) -> List[Dict]:
+        """
+        从Redis获取densets数据
+        
+        Args:
+            redis_config: Redis配置
+            namespace: 命名空间
+            placeholders: 占位符值映射
+            job_datetime: 作业日期时间，格式为 %Y-%m-%d %H:%M:%S
+            
+        Returns:
+            densets数据列表
+        """
+        field = redis_config["field"]
+        prefixes = redis_config.get("prefix", [])
+        from_datetime = redis_config.get("from_datetime")
+        to_datetime = redis_config.get("to_datetime")
+        
+        # 解析job_datetime为datetime对象
+        job_dt = datetime.strptime(job_datetime, "%Y-%m-%d %H:%M:%S")
+        from_timestamp = None
+        to_timestamp = None
+        
+        if from_datetime:
+            from_datetime_str = parse_datetime(from_datetime, base_datetime=job_dt)
+            from_timestamp = parse_datetime_to_timestamp(from_datetime_str)
+        if to_datetime:
+            to_datetime_str = parse_datetime(to_datetime, base_datetime=job_dt)
+            to_timestamp = parse_datetime_to_timestamp(to_datetime_str)
+        
+        redis_key = self._build_redis_key(namespace, "densets", prefixes, field, placeholders, job_datetime)
+        series_key = self._extract_key_suffix(redis_key, namespace, "densets")
+        
+        return self.redis_connector.get_densets_range(
+            namespace, 
+            series_key, 
+            start_time=from_timestamp, 
+            end_time=to_timestamp
+        )
+    
+    def _convert_densets_to_dataframe(self, densets_data: List[Dict], drop_duplicate: str = "none", split_char: str = ",", schema_str: str = None) -> pd.DataFrame:
+        """
+        将densets数据转换为DataFrame
+        
+        Args:
+            densets_data: densets数据
+            drop_duplicate: 去重策略，"none"或"keep_latest"
+            split_char: 分隔符
+            schema_str: schema字符串，如 "job_date:string,fcst_date:string,fcst_qty:double,etl_time:string"
+            
+        Returns:
+            DataFrame
+        """
+        if not densets_data:
+            return pd.DataFrame()
+        
+        # 解析schema字符串
+        schema_columns = []
+        if schema_str:
+            schema_columns = self._parse_schema_string(schema_str)
+        
+        # 展开数据
+        rows = []
+        for item in densets_data:
+            timestamp = item["timestamp"]
+            value_str = item["value"]
+            
+            # 按分隔符分割字符串
+            values = value_str.split(split_char)
+            
+            # 验证值的数量
+            if schema_columns and len(values) < len(schema_columns):
+                raise ValueError(f"数据值数量不足: 期望至少 {len(schema_columns)} 个值，实际只有 {len(values)} 个值。数据: {value_str}")
+            
+            # 创建行数据
+            if schema_columns:
+                # 如果有schema，创建有意义的列并进行类型验证
+                row = {"__timestamp__": timestamp}
+                for i, (col_name, col_type) in enumerate(schema_columns):
+                    if i < len(values):
+                        # 类型转换和验证
+                        converted_value = self._convert_value_type(values[i], col_type)
+                        row[col_name] = converted_value
+                rows.append(row)
+            else:
+                # 否则保持原始格式
+                row = {
+                    "__timestamp__": timestamp,
+                    "__values__": values
+                }
+                rows.append(row)
+        
+        # 创建DataFrame
+        df = pd.DataFrame(rows)
+        
+        if len(df) == 0:
+            return df
+        
+        # 根据去重策略处理数据
+        if drop_duplicate == "none":
+            # 不做任何处理，容忍同一个score有多个值
+            df = df.sort_values('__timestamp__').reset_index(drop=True)
+        elif drop_duplicate == "keep_latest":
+            # 保留最新的记录
+            df = df.sort_values('__timestamp__', ascending=False)
+            df = df.drop_duplicates(subset=['__timestamp__'], keep='first')
+            df = df.sort_values('__timestamp__').reset_index(drop=True)
+        else:
+            raise ValueError(f"不支持的去重策略: {drop_duplicate}")
+        
+        return df
+    
+    def _parse_schema_string(self, schema_str: str) -> List[tuple]:
+        """
+        解析schema字符串
+        
+        Args:
+            schema_str: schema字符串，如 "job_date:string,fcst_date:string,fcst_qty:double,etl_time:string"
+            
+        Returns:
+            列名和类型的元组列表
+        """
+        if not schema_str.strip():
+            return []
+        
+        columns = []
+        for col_def in schema_str.split(','):
+            col_def = col_def.strip()
+            if ':' not in col_def:
+                raise ValueError(f"列定义格式错误: {col_def}，应为 'name:type' 格式")
+            
+            name, col_type = col_def.split(':', 1)
+            name = name.strip()
+            col_type = col_type.strip()
+            
+            if not name:
+                raise ValueError(f"列名不能为空: {col_def}")
+            
+            # 验证类型
+            valid_types = {'string', 'int', 'double', 'boolean'}
+            if col_type not in valid_types:
+                raise ValueError(f"不支持的类型: {col_type}，支持的类型: {valid_types}")
+            
+            columns.append((name, col_type))
+        
+        return columns
+    
+    def _convert_value_type(self, value: str, target_type: str) -> Any:
+        """
+        将字符串值转换为指定类型
+        
+        Args:
+            value: 字符串值
+            target_type: 目标类型
+            
+        Returns:
+            转换后的值
+        """
+        if target_type == 'string':
+            return value
+        elif target_type == 'int':
+            try:
+                return int(value)
+            except ValueError:
+                raise ValueError(f"无法将值 '{value}' 转换为 int 类型")
+        elif target_type == 'double':
+            try:
+                return float(value)
+            except ValueError:
+                raise ValueError(f"无法将值 '{value}' 转换为 double 类型")
+        elif target_type == 'boolean':
+            value_lower = value.lower()
+            if value_lower in {'true', '1', 'yes', 'on'}:
+                return True
+            elif value_lower in {'false', '0', 'no', 'off'}:
+                return False
+            else:
+                raise ValueError(f"无法将值 '{value}' 转换为 boolean 类型")
+        else:
+            raise ValueError(f"不支持的类型: {target_type}")
 
     def _collect_batch_keys(self, data_config: Dict[str, Any], placeholders: Dict[str, Any], job_datetime: str) -> Dict[str, Dict[str, Any]]:
         """

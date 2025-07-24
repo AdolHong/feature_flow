@@ -244,6 +244,39 @@ class RedisConnector:
         self.redis_client.expire(redis_key, ttl)
         
         print(f"✅ 时间序列数据点已添加: {redis_key} @ {timestamp}")
+
+    # ========== densets 存储相关方法 ==========
+    
+    def add_densets_point(self, namespace: str, series_key: str, timestamp: float, value: Any, ttl: int = 432000):
+        """
+        添加densets数据点
+        
+        Args:
+            namespace: 命名空间
+            series_key: densets键名
+            timestamp: 时间戳（Unix时间戳）
+            value: 数据值（将被序列化为分隔符分隔的字符串）
+            ttl: 生存时间（秒），默认5天
+        """
+        redis_key = f"{namespace}::densets::{series_key}"
+        
+        # 将值序列化为分隔符分隔的字符串
+        if isinstance(value, (dict, list)):
+            # 如果是字典，转换为值列表
+            if isinstance(value, dict):
+                serialized_value = ",".join(str(v) for v in value.values())
+            else:
+                serialized_value = ",".join(str(v) for v in value)
+        else:
+            serialized_value = str(value)
+        
+        # 直接添加数据，不删除相同时间戳的数据
+        self.redis_client.zadd(redis_key, {serialized_value: timestamp})
+        
+        # 设置TTL
+        self.redis_client.expire(redis_key, ttl)
+        
+        print(f"✅ densets数据点已添加: {redis_key} @ {timestamp}")
     
     def get_timeseries_range(self, namespace: str, series_key: str, start_time: float = None, end_time: float = None, limit: int = None) -> List[Dict]:
         """
@@ -289,6 +322,42 @@ class RedisConnector:
         
         return timeseries_data
     
+    def get_densets_range(self, namespace: str, series_key: str, start_time: float = None, end_time: float = None, limit: int = None) -> List[Dict]:
+        """
+        获取densets数据范围
+        
+        Args:
+            namespace: 命名空间
+            series_key: densets键名
+            start_time: 开始时间戳（None表示从最早开始）
+            end_time: 结束时间戳（None表示到最晚结束）
+            limit: 限制返回数量
+            
+        Returns:
+            densets数据列表，每个元素包含timestamp和value
+        """
+        redis_key = f"{namespace}::densets::{series_key}"
+        
+        # 设置查询范围
+        min_score = start_time if start_time is not None else '-inf'
+        max_score = end_time if end_time is not None else '+inf'
+        
+        # 获取数据
+        if limit:
+            results = self.redis_client.zrangebyscore(redis_key, min_score, max_score, withscores=True, start=0, num=limit)
+        else:
+            results = self.redis_client.zrangebyscore(redis_key, min_score, max_score, withscores=True)
+        
+        # 格式化结果
+        densets_data = []
+        for value_str, timestamp in results:
+            densets_data.append({
+                "timestamp": timestamp,
+                "value": value_str
+            })
+        
+        return densets_data
+    
     def get_timeseries_latest(self, namespace: str, series_key: str, count: int = 1) -> List[Dict]:
         """
         获取时间序列最新数据
@@ -323,6 +392,33 @@ class RedisConnector:
         
         return timeseries_data
     
+    def get_densets_latest(self, namespace: str, series_key: str, count: int = 1) -> List[Dict]:
+        """
+        获取densets最新数据
+        
+        Args:
+            namespace: 命名空间
+            series_key: densets键名
+            count: 返回最新的数据点数量
+            
+        Returns:
+            最新的densets数据列表
+        """
+        redis_key = f"{namespace}::densets::{series_key}"
+        
+        # 获取最新的数据（按时间戳降序）
+        results = self.redis_client.zrevrange(redis_key, 0, count - 1, withscores=True)
+        
+        # 格式化结果
+        densets_data = []
+        for value_str, timestamp in results:
+            densets_data.append({
+                "timestamp": timestamp,
+                "value": value_str
+            })
+        
+        return densets_data
+    
     def get_timeseries_count(self, namespace: str, series_key: str, start_time: float = None, end_time: float = None) -> int:
         """
         获取时间序列数据点数量
@@ -337,6 +433,26 @@ class RedisConnector:
             数据点数量
         """
         redis_key = f"{namespace}::timeseries::{series_key}"
+        
+        if start_time is not None and end_time is not None:
+            return self.redis_client.zcount(redis_key, start_time, end_time)
+        else:
+            return self.redis_client.zcard(redis_key)
+    
+    def get_densets_count(self, namespace: str, series_key: str, start_time: float = None, end_time: float = None) -> int:
+        """
+        获取densets数据点数量
+        
+        Args:
+            namespace: 命名空间
+            series_key: densets键名
+            start_time: 开始时间戳
+            end_time: 结束时间戳
+            
+        Returns:
+            数据点数量
+        """
+        redis_key = f"{namespace}::densets::{series_key}"
         
         if start_time is not None and end_time is not None:
             return self.redis_client.zcount(redis_key, start_time, end_time)
@@ -359,6 +475,24 @@ class RedisConnector:
         redis_key = f"{namespace}::timeseries::{series_key}"
         removed_count = self.redis_client.zremrangebyscore(redis_key, start_time, end_time)
         print(f"✅ 删除了 {removed_count} 个时间序列数据点")
+        return removed_count
+    
+    def remove_densets_range(self, namespace: str, series_key: str, start_time: float, end_time: float) -> int:
+        """
+        删除densets指定时间范围的数据
+        
+        Args:
+            namespace: 命名空间
+            series_key: densets键名
+            start_time: 开始时间戳
+            end_time: 结束时间戳
+            
+        Returns:
+            删除的数据点数量
+        """
+        redis_key = f"{namespace}::densets::{series_key}"
+        removed_count = self.redis_client.zremrangebyscore(redis_key, start_time, end_time)
+        print(f"✅ 删除了 {removed_count} 个densets数据点")
         return removed_count
     
     def cleanup_old_timeseries(self, namespace: str, series_key: str, keep_latest: int = 1000):
@@ -384,6 +518,31 @@ class RedisConnector:
         # 删除旧数据（保留最新的keep_latest个）
         removed_count = self.redis_client.zremrangebyrank(redis_key, 0, total_count - keep_latest - 1)
         print(f"✅ 清理了 {removed_count} 个旧的时间序列数据点")
+        return removed_count
+    
+    def cleanup_old_densets(self, namespace: str, series_key: str, keep_latest: int = 1000):
+        """
+        清理旧的densets数据，只保留最新的N个数据点
+        
+        Args:
+            namespace: 命名空间
+            series_key: densets键名
+            keep_latest: 保留最新的数据点数量
+            
+        Returns:
+            删除的数据点数量
+        """
+        redis_key = f"{namespace}::densets::{series_key}"
+        
+        # 获取总数量
+        total_count = self.redis_client.zcard(redis_key)
+        
+        if total_count <= keep_latest:
+            return 0
+        
+        # 删除旧数据（保留最新的keep_latest个）
+        removed_count = self.redis_client.zremrangebyrank(redis_key, 0, total_count - keep_latest - 1)
+        print(f"✅ 清理了 {removed_count} 个旧的densets数据点")
         return removed_count
     
 

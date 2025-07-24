@@ -130,7 +130,7 @@ def test_densets_functionality():
     
     # 清理测试数据
     print("\n🧹 清理测试数据...")
-    # redis_connector.redis_client.delete(f"{namespace}::densets::env=prod::region=cn::{series_key}")
+    redis_connector.redis_client.delete(f"{namespace}::densets::env=prod::region=cn::{series_key}")
     print("✅ 测试数据已清理")
 
 

@@ -302,7 +302,7 @@ class CollectionNode(Node):
                     parsed_code = parse_dynamic_parameters(self.logic_code, job_date, placeholders)
                     
                     with redirect_stdout(text_output):
-                        exec(parsed_code, {}, local_vars)
+                        exec(parsed_code, local_vars, local_vars)
                     
                     # 更新flow_context - 将输出数据中需要跟踪的变量添加到flow_context
                     for var_name in self.tracked_variables:

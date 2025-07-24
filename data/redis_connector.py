@@ -247,7 +247,7 @@ class RedisConnector:
 
     # ========== densets 存储相关方法 ==========
     
-    def add_densets_point(self, namespace: str, series_key: str, timestamp: float, value: Any, ttl: int = 432000):
+    def add_densets_point(self, namespace: str, series_key: str, timestamp: float, value: Any, schema: str = None, ttl: int = 432000):
         """
         添加densets数据点
         
@@ -256,17 +256,29 @@ class RedisConnector:
             series_key: densets键名
             timestamp: 时间戳（Unix时间戳）
             value: 数据值（将被序列化为分隔符分隔的字符串）
+            schema: 数据schema，格式如 "col1:string,col2:int,col3:double"，用于保证字段顺序
             ttl: 生存时间（秒），默认5天
         """
         redis_key = f"{namespace}::densets::{series_key}"
         
         # 将值序列化为分隔符分隔的字符串
-        if isinstance(value, (dict, list)):
-            # 如果是字典，转换为值列表
-            if isinstance(value, dict):
-                serialized_value = ",".join(str(v) for v in value.values())
+        if isinstance(value, dict):
+            if schema:
+                # 根据schema顺序序列化
+                schema_columns = self._parse_schema_string(schema)
+                serialized_values = []
+                for col_name, col_type in schema_columns:
+                    if col_name in value:
+                        serialized_values.append(str(value[col_name]))
+                    else:
+                        # 如果字段不存在，使用空字符串
+                        serialized_values.append("")
+                serialized_value = ",".join(serialized_values)
             else:
-                serialized_value = ",".join(str(v) for v in value)
+                # 如果没有schema，按字典键的顺序（不保证顺序）
+                serialized_value = ",".join(str(v) for v in value.values())
+        elif isinstance(value, list):
+            serialized_value = ",".join(str(v) for v in value)
         else:
             serialized_value = str(value)
         
@@ -277,6 +289,33 @@ class RedisConnector:
         self.redis_client.expire(redis_key, ttl)
         
         print(f"✅ densets数据点已添加: {redis_key} @ {timestamp}")
+        if schema:
+            print(f"   使用schema: {schema}")
+    
+    def _parse_schema_string(self, schema_str: str) -> List[tuple]:
+        """
+        解析schema字符串，返回列名和类型的元组列表
+        
+        Args:
+            schema_str: schema字符串，格式如 "col1:string,col2:int,col3:double"
+            
+        Returns:
+            列名和类型的元组列表
+        """
+        if not schema_str:
+            return []
+        
+        columns = []
+        for col_def in schema_str.split(','):
+            col_def = col_def.strip()
+            if ':' in col_def:
+                col_name, col_type = col_def.split(':', 1)
+                columns.append((col_name.strip(), col_type.strip()))
+            else:
+                # 如果没有类型定义，默认为string
+                columns.append((col_def.strip(), 'string'))
+        
+        return columns
     
     def get_timeseries_range(self, namespace: str, series_key: str, start_time: float = None, end_time: float = None, limit: int = None) -> List[Dict]:
         """

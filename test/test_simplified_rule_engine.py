@@ -226,15 +226,8 @@ class TestSimplifiedRuleEngine(unittest.TestCase):
         assert not results["logic2"].success
         assert "validation failed" in results["logic2"].error
 
-    def test_global_schema(self):
-        """测试全局schema"""
-        # 设置全局schema
-        self.engine.set_global_schema({
-            "trend": "double",
-            "seasonal": "double",
-            "residual": "double"
-        })
-        
+    def test_basic_variables(self):
+        """测试基本变量处理"""
         # 创建节点
         logic1 = LogicNode("logic1")
         logic1.set_logic("trend = 0.5\nseasonal = 0.3\nresidual = 0.2")
@@ -313,9 +306,6 @@ class TestSimplifiedRuleEngine(unittest.TestCase):
 
     def test_export_import(self):
         """测试导出导入功能"""
-        # 设置全局schema
-        self.engine.set_global_schema({"trend": "double"})
-        
         # 创建节点
         logic1 = LogicNode("logic1")
         logic1.set_logic("trend = 0.5")
@@ -336,9 +326,6 @@ class TestSimplifiedRuleEngine(unittest.TestCase):
         # 创建新引擎并导入配置
         new_engine = RuleEngine("test_engine_new")
         new_engine.import_from_json(json_config)
-        
-        # 验证配置被正确导入
-        assert new_engine.get_global_schema() == {"trend": "double"}
         
         # 执行新引擎
         results = new_engine.execute()

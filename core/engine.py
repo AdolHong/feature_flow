@@ -25,32 +25,11 @@ class RuleEngine:
         self.execution_results: Dict[str, NodeResult] = {}
         self.logger = logging.getLogger(f"RuleEngine.{name}")
         
-        # 全局schema管理 - 所有节点共享的schema定义
-        self.global_schema: Dict[str, str] = {}
-        
         # 默认添加start_node
         self.start_node = StartNode("start_node")
         self.data_flow.add_node(self.start_node)
-    
-    # ==================== 全局Schema管理 ====================
-    def set_global_schema(self, schema: Dict[str, str]):
-        """设置全局schema"""
-        self.global_schema = schema
-        self.logger.info(f"Set global schema with {len(schema)} items")
-    
-    def add_global_schema(self, name: str, schema: str):
-        """添加单个全局schema"""
-        self.global_schema[name] = schema
-        self.logger.info(f"Added global schema: {name} -> {schema}")
-    
-    def get_global_schema(self) -> Dict[str, str]:
-        """获取全局schema"""
-        return self.global_schema.copy()
-    
-    def get_schema_for_variable(self, variable_name: str) -> Optional[str]:
-        """获取变量的schema定义"""
-        return self.global_schema.get(variable_name)
-    
+        
+        
     # ==================== 节点管理 ====================
     def add_node(self, node: Node):
         """添加节点到引擎"""
@@ -430,8 +409,7 @@ class RuleEngine:
             'context_size': len(self.context),
             'placeholders_size': len(self.placeholders),
             'job_date': self.job_date,
-            'results_size': len(self.execution_results),
-            'global_schema_size': len(self.global_schema)
+            'results_size': len(self.execution_results)
         }
     
     # ==================== 可视化 ====================
@@ -439,11 +417,7 @@ class RuleEngine:
         """可视化数据流（简单文本格式）"""
         lines = [f"Rule Engine: {self.name}", "=" * 50]
         
-        # 全局schema信息
-        if self.global_schema:
-            lines.append("\nGlobal Schema:")
-            for name, schema in self.global_schema.items():
-                lines.append(f"  {name}: {schema}")
+
         
         # 节点信息
         lines.append("\nNodes:")
@@ -475,7 +449,6 @@ class RuleEngine:
         """导出规则引擎配置为JSON字符串"""
         config = {
             'name': self.name,
-            'global_schema': self.global_schema,
             'nodes': {},
             'dependencies': self.data_flow.dependencies
         }
@@ -519,9 +492,8 @@ class RuleEngine:
         if 'start_node' not in self.data_flow.nodes:
             self.data_flow.add_node(self.start_node)
         
-        # 设置引擎名称和全局schema
+        # 设置引擎名称
         self.name = config.get('name', self.name)
-        self.global_schema = config.get('global_schema', {})
         
         # 添加所有节点
         for node_name, node_config in config.get('nodes', {}).items():

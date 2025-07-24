@@ -59,13 +59,22 @@ def test_densets_functionality():
     # 使用正确的键名格式
     redis_key = f"{namespace}::densets::env=prod::region=cn::{series_key}"
     
+    # 定义schema
+    schema = "job_date:string,fcst_date:string,fcst_qty:double,etl_time:string"
+    
     for i, row in df.iterrows():
         # 将行数据转换为字典
         row_dict = row.to_dict()
         
-        # 存储为densets格式
+        # 存储为densets格式，使用schema保证字段顺序
         timestamp = base_timestamp + i * 86400  # 每天递增
-        redis_connector.add_densets_point(namespace, f"env=prod::region=cn::{series_key}", timestamp, row_dict)
+        redis_connector.add_densets_point(
+            namespace, 
+            f"env=prod::region=cn::{series_key}", 
+            timestamp, 
+            row_dict,
+            schema=schema
+        )
     
     print("✅ densets数据存储完成")
     print()
@@ -367,7 +376,75 @@ def test_densets_schema_validation():
     print("✅ 测试数据已清理")
 
 
+def test_densets_schema_order():
+    """测试densets schema字段顺序功能"""
+    print("\n🧪 测试densets schema字段顺序功能")
+    print("=" * 50)
+    
+    # 连接Redis
+    try:
+        redis_connector = RedisConnector()
+        print("✅ Redis连接成功")
+    except Exception as e:
+        print(f"❌ Redis连接失败: {e}")
+        return
+    
+    # 创建测试数据
+    namespace = "test_densets_order"
+    series_key = "order_test"
+    
+    # 测试数据 - 字段顺序混乱
+    test_data = [
+        {"c": 3, "a": 1, "b": 2, "d": 4},
+        {"d": 8, "b": 6, "a": 5, "c": 7},
+    ]
+    
+    # 定义schema - 固定字段顺序
+    schema = "a:int,b:int,c:int,d:int"
+    
+    print(f"📋 使用schema: {schema}")
+    print("📊 测试数据:")
+    for i, data in enumerate(test_data):
+        print(f"  数据{i+1}: {data}")
+    print()
+    
+    # 存储数据
+    print("💾 存储densets数据...")
+    base_timestamp = parse_datetime_to_timestamp("2025-07-23 14:49:45")
+    
+    for i, data in enumerate(test_data):
+        timestamp = base_timestamp + i * 86400
+        redis_connector.add_densets_point(
+            namespace, 
+            series_key, 
+            timestamp, 
+            data,
+            schema=schema
+        )
+    
+    print("✅ 数据存储完成")
+    print()
+    
+    # 直接获取Redis数据验证顺序
+    print("🔍 验证Redis中存储的数据顺序...")
+    redis_key = f"{namespace}::densets::{series_key}"
+    results = redis_connector.redis_client.zrange(redis_key, 0, -1, withscores=True)
+    
+    for i, (value_str, timestamp) in enumerate(results):
+        print(f"  数据{i+1}: {value_str}")
+        values = value_str.split(',')
+        print(f"    解析后: {values}")
+        print(f"    期望顺序: [1, 2, 3, 4]" if i == 0 else "    期望顺序: [5, 6, 7, 8]")
+        print()
+    
+    # 清理测试数据
+    print("🧹 清理测试数据...")
+    redis_connector.redis_client.delete(redis_key)
+    print("✅ 测试数据已清理")
+
+
 if __name__ == "__main__":
     test_densets_functionality()
     test_densets_without_columns()
-    test_densets_schema_validation() 
+    test_densets_schema_validation()
+    test_densets_schema_order() 

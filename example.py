@@ -122,7 +122,8 @@ output = xgb_forecast
 
     coll_node = CollectionNode("coll")
     coll_node.add_expected_input_schema("output", "job_date:string,fcst_date:string,fcst_qty:double,etl_time:string,priority:int,model:string")
-    coll_node.set_logic("""
+    coll_node.set_logic(
+"""
 import pandas as pd     
 # 拼接上游的输出; 不关心node_name      
 df_concat = pd.concat([collection[node_name]['output'] for node_name in collection])

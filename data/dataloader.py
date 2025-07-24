@@ -6,6 +6,7 @@ import numpy as np
 from .redis_connector import RedisConnector
 from utils.datetime_parser import parse_datetime, parse_datetime_to_timestamp
 import re
+import time
 
 
 class DataLoader:
@@ -22,7 +23,7 @@ class DataLoader:
     
     def load_data(self, data_config: Dict[str, Any], placeholders: Dict[str, Any], job_datetime: str) -> Dict[str, Any]:
         """
-        根据data_config加载数据
+        根据data_config加载数据（单次查询方式）
         
         Args:
             data_config: 数据配置
@@ -55,6 +56,52 @@ class DataLoader:
                 print(f"✅ 成功加载变量: {variable_name}")
             except Exception as e:
                 print(f"❌ 加载变量失败: {variable_name}, 错误: {e}")
+                loaded_data[variable_name] = None
+        
+        return loaded_data
+    
+    def load_data_batch(self, data_config: Dict[str, Any], placeholders: Dict[str, Any], job_datetime: str) -> Dict[str, Any]:
+        """
+        根据data_config批量加载数据（使用mget方式）
+        
+        Args:
+            data_config: 数据配置
+            placeholders: 占位符值映射
+            job_datetime: 作业日期时间，格式为 %Y-%m-%d %H:%M:%S
+            
+        Returns:
+            加载的数据字典
+        """
+        # 验证占位符
+        self._validate_placeholders(data_config, placeholders)
+        
+        # 验证job_datetime格式
+        try:
+            datetime.strptime(job_datetime, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            raise ValueError(f"job_datetime格式错误，应为 %Y-%m-%d %H:%M:%S 格式，当前值: {job_datetime}")
+        
+        # 收集所有需要批量获取的键
+        batch_keys = self._collect_batch_keys(data_config, placeholders, job_datetime)
+        
+        # 批量获取数据
+        batch_results = self._batch_get_data(batch_keys)
+        
+        # 处理结果并构建返回数据
+        loaded_data = {}
+        for variable_config in data_config.get("variable", []):
+            variable_name = variable_config["name"]
+            try:
+                loaded_data[variable_name] = self._process_batch_result(
+                    variable_config,
+                    data_config["namespace"],
+                    batch_results,
+                    placeholders,
+                    job_datetime
+                )
+                print(f"✅ 成功批量加载变量: {variable_name}")
+            except Exception as e:
+                print(f"❌ 批量加载变量失败: {variable_name}, 错误: {e}")
                 loaded_data[variable_name] = None
         
         return loaded_data
@@ -317,3 +364,133 @@ class DataLoader:
             raise ValueError(f"不支持的去重策略: {drop_duplicate}")
         
         return df
+
+    def _collect_batch_keys(self, data_config: Dict[str, Any], placeholders: Dict[str, Any], job_datetime: str) -> Dict[str, Dict[str, Any]]:
+        """
+        收集所有需要批量获取的键
+        
+        Returns:
+            键名到配置的映射
+        """
+        batch_keys = {}
+        
+        for variable_config in data_config.get("variable", []):
+            variable_name = variable_config["name"]
+            redis_config = variable_config["redis_config"]
+            redis_type = redis_config["type"]
+            
+            # 只处理简单变量类型（value和json），时间序列需要单独处理
+            if redis_type in ["value", "json"]:
+                effective_namespace = variable_config.get("namespace") or data_config["namespace"]
+                field = redis_config["field"]
+                prefixes = redis_config.get("prefix", [])
+                
+                redis_key = self._build_redis_key(effective_namespace, redis_type, prefixes, field, placeholders, job_datetime)
+                key_suffix = self._extract_key_suffix(redis_key, effective_namespace, redis_type)
+                
+                batch_keys[redis_key] = {
+                    "variable_name": variable_name,
+                    "redis_type": redis_type,
+                    "namespace": effective_namespace,
+                    "key_suffix": key_suffix,
+                    "variable_config": variable_config
+                }
+        
+        return batch_keys
+    
+    def _batch_get_data(self, batch_keys: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        批量获取数据
+        
+        Args:
+            batch_keys: 键名到配置的映射
+            
+        Returns:
+            键名到数据的映射
+        """
+        if not batch_keys:
+            return {}
+        
+        # 按类型分组
+        value_keys = []
+        json_keys = []
+        
+        for redis_key, config in batch_keys.items():
+            if config["redis_type"] == "value":
+                value_keys.append((redis_key, config))
+            elif config["redis_type"] == "json":
+                json_keys.append((redis_key, config))
+        
+        batch_results = {}
+        
+        # 批量获取value类型数据
+        if value_keys:
+            value_namespaces = {}
+            for redis_key, config in value_keys:
+                namespace = config["namespace"]
+                if namespace not in value_namespaces:
+                    value_namespaces[namespace] = []
+                value_namespaces[namespace].append((redis_key, config))
+            
+            for namespace, keys_configs in value_namespaces.items():
+                key_suffixes = [config["key_suffix"] for _, config in keys_configs]
+                results = self.redis_connector.redis_client.mget([f"{namespace}::value::{suffix}" for suffix in key_suffixes])
+                
+                for i, (redis_key, config) in enumerate(keys_configs):
+                    batch_results[redis_key] = results[i]
+        
+        # 批量获取json类型数据
+        if json_keys:
+            json_namespaces = {}
+            for redis_key, config in json_keys:
+                namespace = config["namespace"]
+                if namespace not in json_namespaces:
+                    json_namespaces[namespace] = []
+                json_namespaces[namespace].append((redis_key, config))
+            
+            for namespace, keys_configs in json_namespaces.items():
+                key_suffixes = [config["key_suffix"] for _, config in keys_configs]
+                results = self.redis_connector.redis_client.mget([f"{namespace}::json::{suffix}" for suffix in key_suffixes])
+                
+                for i, (redis_key, config) in enumerate(keys_configs):
+                    batch_results[redis_key] = results[i]
+        
+        return batch_results
+    
+    def _process_batch_result(self, variable_config: Dict[str, Any], namespace: str, batch_results: Dict[str, Any], placeholders: Dict[str, Any], job_datetime: str) -> Any:
+        """
+        处理批量获取的结果
+        
+        Args:
+            variable_config: 变量配置
+            namespace: 命名空间
+            batch_results: 批量获取的结果
+            placeholders: 占位符值映射
+            job_datetime: 作业日期时间
+            
+        Returns:
+            处理后的变量数据
+        """
+        redis_config = variable_config["redis_config"]
+        redis_type = redis_config["type"]
+        
+        effective_namespace = variable_config.get("namespace") or namespace
+        
+        if redis_type in ["value", "json"]:
+            field = redis_config["field"]
+            prefixes = redis_config.get("prefix", [])
+            redis_key = self._build_redis_key(effective_namespace, redis_type, prefixes, field, placeholders, job_datetime)
+            
+            if redis_key not in batch_results or batch_results[redis_key] is None:
+                raise KeyError(f"变量 '{variable_config['name']}' 在Redis中不存在")
+            
+            if redis_type == "value":
+                return batch_results[redis_key]
+            elif redis_type == "json":
+                import json
+                return json.loads(batch_results[redis_key])
+        elif redis_type == "timeseries":
+            # 时间序列仍然需要单独处理
+            return self._load_timeseries(variable_config, effective_namespace, placeholders, job_datetime)
+        else:
+            raise ValueError(f"不支持的Redis类型: {redis_type}")

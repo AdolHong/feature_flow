@@ -207,7 +207,7 @@ def main():
             "item_nbr": item_nbr
         }
         
-        loaded_data = loader.load_data(data_config, placeholders, job_datetime)
+        loaded_data = loader.load_data_batch(data_config, placeholders, job_datetime)
         
         print("✅ 数据加载完成:")
         for var_name, var_data in loaded_data.items():

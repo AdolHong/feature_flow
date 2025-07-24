@@ -22,13 +22,14 @@ def create_test_data(redis_connector: RedisConnector, namespace: str, count: int
     """
     print(f"🔄 正在创建 {count} 条测试数据...")
     
-    # 创建value类型数据
+    # 创建value类型数据（按照正确的键名格式）
     for i in range(count):
         key = f"test_value_{i}"
         value = f"value_{i}"
-        redis_connector.store_direct_variable(namespace, key, value)
+        # 直接存储到Redis，使用正确的键名格式
+        redis_connector.redis_client.set(f"{namespace}::value::env=prod::region=cn::{key}", value)
     
-    # 创建json类型数据
+    # 创建json类型数据（按照正确的键名格式）
     for i in range(count):
         key = f"test_json_{i}"
         value = {
@@ -39,7 +40,8 @@ def create_test_data(redis_connector: RedisConnector, namespace: str, count: int
                 "status": "active" if i % 2 == 0 else "inactive"
             }
         }
-        redis_connector.store_json_variable(namespace, key, value)
+        # 直接存储到Redis，使用正确的键名格式
+        redis_connector.redis_client.set(f"{namespace}::json::env=prod::region=cn::{key}", json.dumps(value))
     
     print(f"✅ 测试数据创建完成，共 {count * 2} 条记录")
 
@@ -64,8 +66,8 @@ def create_test_config(count: int = 1000):
                 "type": "value",
                 "field": f"test_value_{i}",
                 "prefix": [
-                    {"key": "env", "value": "prod"},
-                    {"key": "region", "value": "cn"}
+                    {"key": "env", "value": "${env}"},
+                    {"key": "region", "value": "${region}"}
                 ]
             }
         })
@@ -78,8 +80,8 @@ def create_test_config(count: int = 1000):
                 "type": "json",
                 "field": f"test_json_{i}",
                 "prefix": [
-                    {"key": "env", "value": "prod"},
-                    {"key": "region", "value": "cn"}
+                    {"key": "env", "value": "${env}"},
+                    {"key": "region", "value": "${region}"}
                 ]
             }
         })

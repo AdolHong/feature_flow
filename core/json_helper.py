@@ -37,16 +37,32 @@ def universal_decoder(dct):
     """
     根据元数据将字典还原为 Pandas DataFrame 或其他对象。
     """
-    # 检查字典中是否有 __type__ 键
     if "__type__" in dct:
         data_type = dct["__type__"]
-        
-        # 还原 Pandas DataFrame
         if data_type == "DataFrame":
-            return pd.DataFrame.from_dict(dct["data"], orient="tight")
-        
-        # 还原 Pandas Timestamp
+            data = dct["data"]
+            # split 格式
+            if set(data.keys()) == {"index", "columns", "data"}:
+                return pd.DataFrame(data["data"], index=data["index"], columns=data["columns"])
+            # tight 格式
+            elif "index_names" in data or "column_names" in data:
+                return pd.DataFrame.from_dict(data, orient="tight")
+            else:
+                raise ValueError("未知的DataFrame序列化格式")
         if data_type == "Timestamp":
             return pd.Timestamp(dct["value"])
-            
+    # 递归处理嵌套字典
+    for key, value in dct.items():
+        if isinstance(value, dict) and "__type__" in value:
+            data_type = value["__type__"]
+            if data_type == "DataFrame":
+                data = value["data"]
+                if set(data.keys()) == {"index", "columns", "data"}:
+                    dct[key] = pd.DataFrame(data["data"], index=data["index"], columns=data["columns"])
+                elif "index_names" in data or "column_names" in data:
+                    dct[key] = pd.DataFrame.from_dict(data, orient="tight")
+                else:
+                    raise ValueError("未知的DataFrame序列化格式")
+            elif data_type == "Timestamp":
+                dct[key] = pd.Timestamp(value["value"])
     return dct

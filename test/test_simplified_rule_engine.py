@@ -324,8 +324,7 @@ class TestSimplifiedRuleEngine(unittest.TestCase):
         json_config = self.engine.export_to_json()
         
         # 创建新引擎并导入配置
-        new_engine = RuleEngine("test_engine_new")
-        new_engine.import_from_json(json_config)
+        new_engine = RuleEngine.import_from_json(json_config)
         
         # 执行新引擎
         results = new_engine.execute()

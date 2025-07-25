@@ -477,23 +477,14 @@ class RuleEngine:
         
         return json.dumps(config, indent=2, ensure_ascii=False)
     
-    def import_from_json(self, json_str: str):
-        """从JSON字符串导入规则引擎配置"""
+    @staticmethod
+    def import_from_json(json_str: str) -> 'RuleEngine':
+        """从JSON字符串创建新的规则引擎实例"""
         config = json.loads(json_str)
         
-        # 清空现有配置（保留start_node）
-        nodes_to_remove = [name for name in self.data_flow.nodes.keys() 
-                          if name != 'start_node']
-        for node_name in nodes_to_remove:
-            self.data_flow.remove_node(node_name)
-        self.data_flow.dependencies.clear()
-        
-        # 确保start_node在nodes中
-        if 'start_node' not in self.data_flow.nodes:
-            self.data_flow.add_node(self.start_node)
-        
-        # 设置引擎名称
-        self.name = config.get('name', self.name)
+        # 创建新的引擎实例
+        engine_name = config.get('name', 'default')
+        engine = RuleEngine(engine_name)
         
         # 添加所有节点
         for node_name, node_config in config.get('nodes', {}).items():
@@ -520,13 +511,15 @@ class RuleEngine:
             if 'expected_input_schema' in node_config:
                 node.set_expected_input_schema(node_config['expected_input_schema'])
             
-            self.data_flow.add_node(node)
+            engine.data_flow.add_node(node)
         
         # 恢复依赖关系
         for target, sources in config.get('dependencies', {}).items():
             for source in sources:
-                if source in self.data_flow.nodes and target in self.data_flow.nodes:
-                    self.data_flow.add_dependency(source, target)
+                if source in engine.data_flow.nodes and target in engine.data_flow.nodes:
+                    engine.data_flow.add_dependency(source, target)
+        
+        return engine
     
     def save_to_file(self, file_path: str):
         """保存规则引擎配置到文件"""
@@ -535,12 +528,14 @@ class RuleEngine:
             f.write(json_str)
         self.logger.info(f"Configuration saved to: {file_path}")
     
-    def load_from_file(self, file_path: str):
-        """从文件加载规则引擎配置"""
+    @staticmethod
+    def load_from_file(file_path: str) -> 'RuleEngine':
+        """从文件创建新的规则引擎实例"""
         with open(file_path, 'r', encoding='utf-8') as f:
             json_str = f.read()
-        self.import_from_json(json_str)
-        self.logger.info(f"Configuration loaded from: {file_path}")
+        engine = RuleEngine.import_from_json(json_str)
+        engine.logger.info(f"Configuration loaded from: {file_path}")
+        return engine
     
     def __repr__(self):
         return f"RuleEngine(name='{self.name}', nodes={len(self.data_flow.nodes)})" 

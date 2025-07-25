@@ -505,6 +505,7 @@ class DataLoader:
         if drop_duplicate == "none":
             # 不做任何处理，容忍同一个score有多个值
             df = df.sort_values('__timestamp__').reset_index(drop=True)
+            df = df.drop(columns=['__timestamp__'])
         elif drop_duplicate == "keep_latest":
             # 对于 densets，如果有 etl_time 字段，按 etl_time 排序；否则按时间戳排序
             if 'etl_time' in df.columns:
@@ -512,11 +513,13 @@ class DataLoader:
                 df = df.sort_values('etl_time', ascending=False)
                 df = df.drop_duplicates(subset=['__timestamp__'], keep='first')
                 df = df.sort_values('__timestamp__').reset_index(drop=True)
+                df = df.drop(columns=['__timestamp__'])
             else:
                 # 没有 etl_time 字段，按时间戳排序（Redis 中后添加的数据会覆盖先添加的）
                 df = df.sort_values('__timestamp__', ascending=False)
                 df = df.drop_duplicates(subset=['__timestamp__'], keep='first')
                 df = df.sort_values('__timestamp__').reset_index(drop=True)
+                df = df.drop(columns=['__timestamp__'])
         else:
             raise ValueError(f"不支持的去重策略: {drop_duplicate}")
         

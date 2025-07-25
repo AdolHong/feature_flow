@@ -12,7 +12,7 @@ class UniversalEncoder(json.JSONEncoder):
             # 将 DataFrame 转换为字典，并添加类型元数据
             return {
                 "__type__": "DataFrame",
-                "data": obj.to_dict(orient="split")
+                "data": obj.to_dict(orient="tight")
             }
         
         # 处理 Pandas Timestamp
@@ -43,7 +43,7 @@ def universal_decoder(dct):
         
         # 还原 Pandas DataFrame
         if data_type == "DataFrame":
-            return pd.DataFrame.from_dict(dct["data"], orient="split")
+            return pd.DataFrame.from_dict(dct["data"], orient="tight")
         
         # 还原 Pandas Timestamp
         if data_type == "Timestamp":

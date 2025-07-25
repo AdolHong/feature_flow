@@ -506,10 +506,17 @@ class DataLoader:
             # 不做任何处理，容忍同一个score有多个值
             df = df.sort_values('__timestamp__').reset_index(drop=True)
         elif drop_duplicate == "keep_latest":
-            # 保留最新的记录
-            df = df.sort_values('__timestamp__', ascending=False)
-            df = df.drop_duplicates(subset=['__timestamp__'], keep='first')
-            df = df.sort_values('__timestamp__').reset_index(drop=True)
+            # 对于 densets，如果有 etl_time 字段，按 etl_time 排序；否则按时间戳排序
+            if 'etl_time' in df.columns:
+                # 按 etl_time 排序，保留最新的记录
+                df = df.sort_values('etl_time', ascending=False)
+                df = df.drop_duplicates(subset=['__timestamp__'], keep='first')
+                df = df.sort_values('__timestamp__').reset_index(drop=True)
+            else:
+                # 没有 etl_time 字段，按时间戳排序（Redis 中后添加的数据会覆盖先添加的）
+                df = df.sort_values('__timestamp__', ascending=False)
+                df = df.drop_duplicates(subset=['__timestamp__'], keep='first')
+                df = df.sort_values('__timestamp__').reset_index(drop=True)
         else:
             raise ValueError(f"不支持的去重策略: {drop_duplicate}")
         
@@ -598,7 +605,7 @@ class DataLoader:
             redis_config = variable_config["redis_config"]
             redis_type = redis_config["type"]
             
-            # 只处理简单变量类型（value和json），时间序列需要单独处理
+            # 只处理简单变量类型（value和json），时间序列和densets需要单独处理
             if redis_type in ["value", "json"]:
                 effective_namespace = variable_config.get("namespace") or data_config["namespace"]
                 field = redis_config["field"]
@@ -711,5 +718,8 @@ class DataLoader:
         elif redis_type == "timeseries":
             # 时间序列仍然需要单独处理
             return self._load_timeseries(variable_config, effective_namespace, placeholders, job_datetime)
+        elif redis_type == "densets":
+            # densets 仍然需要单独处理
+            return self._load_densets(variable_config, effective_namespace, placeholders, job_datetime)
         else:
             raise ValueError(f"不支持的Redis类型: {redis_type}")

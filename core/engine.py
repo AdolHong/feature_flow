@@ -6,7 +6,7 @@
 """
 
 import logging
-import json
+import json5
 from typing import Dict, List, Any, Optional, Tuple, Union
 from datetime import datetime
 from .nodes import Node, NodeResult, StartNode, GateNode, LogicNode, CollectionNode, parse_dynamic_parameters
@@ -446,7 +446,7 @@ class RuleEngine:
     
     # ==================== JSON导入导出 ====================
     def export_to_json(self) -> str:
-        """导出规则引擎配置为JSON字符串"""
+        """导出规则引擎配置为JSON5字符串"""
         config = {
             'name': self.name,
             'nodes': {},
@@ -475,12 +475,12 @@ class RuleEngine:
             
             config['nodes'][node_name] = node_config
         
-        return json.dumps(config, indent=2, ensure_ascii=False)
+        return json5.dumps(config, indent=2, ensure_ascii=False)
     
     @staticmethod
     def import_from_json(json_str: str) -> 'RuleEngine':
-        """从JSON字符串创建新的规则引擎实例"""
-        config = json.loads(json_str)
+        """从JSON5字符串创建新的规则引擎实例"""
+        config = json5.loads(json_str)
         
         # 创建新的引擎实例
         engine_name = config.get('name', 'default')
@@ -522,7 +522,7 @@ class RuleEngine:
         return engine
     
     def save_to_file(self, file_path: str):
-        """保存规则引擎配置到文件"""
+        """保存规则引擎配置到JSON5文件"""
         json_str = self.export_to_json()
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(json_str)
@@ -530,7 +530,7 @@ class RuleEngine:
     
     @staticmethod
     def load_from_file(file_path: str) -> 'RuleEngine':
-        """从文件创建新的规则引擎实例"""
+        """从JSON5文件创建新的规则引擎实例"""
         with open(file_path, 'r', encoding='utf-8') as f:
             json_str = f.read()
         engine = RuleEngine.import_from_json(json_str)

@@ -165,27 +165,44 @@ class RuleEngine:
         """执行单个节点"""
         node = self.data_flow.nodes[node_name]
         
-        # 检查是否被GateNode阻止执行
-        for dep_node_name in self.get_node_dependencies(node_name):
-            dep_node = self.data_flow.nodes[dep_node_name]
-            if isinstance(dep_node, GateNode):
-                dep_result = self.execution_results.get(dep_node_name)
-                if dep_result and dep_result.success:
-                    if hasattr(dep_node, 'should_continue') and not dep_node.should_continue:
-                        # 被GateNode阻止，跳过执行
-                        return NodeResult(success=False, error=f"Execution blocked by gate node {dep_node_name}", status="blocked")
-        
-        # 检查：如果有依赖节点且所有依赖节点都未成功，则本节点被阻断
+        # 检查GateNode依赖：只要有一个GateNode通过就允许执行
         dep_names = self.get_node_dependencies(node_name)
         if dep_names:
-            all_blocked_or_failed = True
-            for dep in dep_names:
-                dep_result = self.execution_results.get(dep)
-                if dep_result and dep_result.success:
-                    all_blocked_or_failed = False
-                    break
-            if all_blocked_or_failed:
-                return NodeResult(success=False, error=f"All dependencies failed or blocked for node {node_name}", status="blocked")
+            # 检查是否有GateNode依赖
+            gate_deps = []
+            other_deps = []
+            for dep_node_name in dep_names:
+                dep_node = self.data_flow.nodes[dep_node_name]
+                if isinstance(dep_node, GateNode):
+                    gate_deps.append(dep_node_name)
+                else:
+                    other_deps.append(dep_node_name)
+            
+            # 如果有GateNode依赖，检查是否至少有一个通过
+            if gate_deps:
+                has_passing_gate = False
+                for gate_dep_name in gate_deps:
+                    gate_dep_node = self.data_flow.nodes[gate_dep_name]
+                    gate_result = self.execution_results.get(gate_dep_name)
+                    if gate_result and gate_result.success:
+                        if hasattr(gate_dep_node, 'should_continue') and gate_dep_node.should_continue:
+                            has_passing_gate = True
+                            break
+                
+                # 如果所有GateNode都阻止，则阻止执行
+                if not has_passing_gate:
+                    return NodeResult(success=False, error=f"All gate dependencies blocked execution for node {node_name}", status="blocked")
+            
+            # 检查其他非GateNode依赖：如果有依赖节点且所有依赖节点都未成功，则本节点被阻断
+            if other_deps:
+                all_blocked_or_failed = True
+                for dep in other_deps:
+                    dep_result = self.execution_results.get(dep)
+                    if dep_result and dep_result.success:
+                        all_blocked_or_failed = False
+                        break
+                if all_blocked_or_failed:
+                    return NodeResult(success=False, error=f"All non-gate dependencies failed or blocked for node {node_name}", status="blocked")
         
         # 获取节点输入数据
         inputs = self._get_node_inputs(node_name)
@@ -205,23 +222,41 @@ class RuleEngine:
         inputs = {}
         
         # 从依赖节点获取数据
-        for dep_node_name in self.get_node_dependencies(node_name):
-            dep_node = self.data_flow.nodes[dep_node_name]
+        dep_names = self.get_node_dependencies(node_name)
+        if dep_names:
+            # 检查是否有GateNode依赖
+            gate_deps = []
+            other_deps = []
+            for dep_node_name in dep_names:
+                dep_node = self.data_flow.nodes[dep_node_name]
+                if isinstance(dep_node, GateNode):
+                    gate_deps.append(dep_node_name)
+                else:
+                    other_deps.append(dep_node_name)
             
-            # 检查依赖节点的执行结果，只传递成功执行的节点的数据
-            dep_result = self.execution_results.get(dep_node_name)
-            if dep_result and not dep_result.success:
-                # 如果依赖节点执行失败，跳过该节点
-                continue
+            # 处理GateNode依赖：只要有一个通过就传递数据
+            if gate_deps:
+                for gate_dep_name in gate_deps:
+                    gate_dep_node = self.data_flow.nodes[gate_dep_name]
+                    gate_result = self.execution_results.get(gate_dep_name)
+                    if gate_result and gate_result.success:
+                        if hasattr(gate_dep_node, 'should_continue') and gate_dep_node.should_continue:
+                            # 传递通过的GateNode数据
+                            inputs[f"__node_{gate_dep_name}"] = gate_dep_node
+                            break  # 只要有一个通过就够了
             
-            # 检查门控节点的should_continue
-            if isinstance(dep_node, GateNode):
-                if hasattr(dep_node, 'should_continue') and not dep_node.should_continue:
-                    # 门控节点决定不继续，跳过后续节点
+            # 处理其他非GateNode依赖
+            for dep_node_name in other_deps:
+                dep_node = self.data_flow.nodes[dep_node_name]
+                
+                # 检查依赖节点的执行结果，只传递成功执行的节点的数据
+                dep_result = self.execution_results.get(dep_node_name)
+                if dep_result and not dep_result.success:
+                    # 如果依赖节点执行失败，跳过该节点
                     continue
-            
-            # 传递节点对象，以便访问flow_context
-            inputs[f"__node_{dep_node_name}"] = dep_node
+                
+                # 传递节点对象，以便访问flow_context
+                inputs[f"__node_{dep_node_name}"] = dep_node
         
         # 合并上下文数据到输入，确保全局变量可用
         inputs.update(self.context)

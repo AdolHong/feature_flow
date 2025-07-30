@@ -188,7 +188,7 @@ class GateNode(Node):
     def execute(self, context: Dict[str, Any], job_date: str = None, placeholders: Dict[str, Any] = None) -> NodeResult:
         """执行门控节点"""
         if not self.condition:
-            return NodeResult(success=False, error="No condition provided")
+            return NodeResult(success=False, error="No condition provided", node_type=self.node_type)
         
         # 合并来自上游节点的flow_context
         self.merge_flow_context_from_inputs()
@@ -226,7 +226,7 @@ class LogicNode(Node):
     def execute(self, context: Dict[str, Any], job_date: str = None, placeholders: Dict[str, Any] = None) -> NodeResult:
         """执行逻辑节点"""
         if not self.logic_code:
-            return NodeResult(success=False, error="No logic code provided")
+            return NodeResult(success=False, error="No logic code provided", node_type=self.node_type)
         
         # 合并来自上游节点的flow_context
         self.merge_flow_context_from_inputs()

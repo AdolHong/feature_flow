@@ -402,6 +402,20 @@ class TestEngineNodeTypeSupport:
         assert not result.success
         assert result.node_type == "logic"
         assert "test error" in result.error
+    
+    def test_node_type_in_engine_exception_results(self):
+        """测试节点执行异常时 NodeResult 依然有 node_type"""
+        logic_node = LogicNode("fail_logic")
+        logic_node.set_logic("raise Exception('test error')")
+        logic_node.add_tracked_variable("x")
+        self.engine.add_node(logic_node)
+        self.engine.add_dependency(None, logic_node)
+        results = self.engine.execute()
+        assert "fail_logic" in results
+        result = results["fail_logic"]
+        assert not result.success
+        assert result.node_type == "logic"
+        assert "test error" in result.error
 
 
 if __name__ == "__main__":

@@ -168,7 +168,9 @@ class RuleEngine:
                     self.logger.error(f"Node {node_name} failed: {result.error}")
                     
             except Exception as e:
-                error_result = NodeResult(success=False, error=str(e))
+                node = self.data_flow.nodes[node_name]
+                node_type = node.node_type if hasattr(node, 'node_type') else 'unknown'
+                error_result = NodeResult(success=False, error=str(e), node_type=node_type)
                 self.execution_results[node_name] = error_result
                 self.logger.error(f"Node {node_name} execution error: {e}")
         
@@ -205,7 +207,9 @@ class RuleEngine:
                 
                 # 如果所有GateNode都阻止，则阻止执行
                 if not has_passing_gate:
-                    return NodeResult(success=False, error=f"All gate dependencies blocked execution for node {node_name}", status="blocked")
+                    node = self.data_flow.nodes[node_name]
+                    node_type = node.node_type if hasattr(node, 'node_type') else 'unknown'
+                    return NodeResult(success=False, error=f"All gate dependencies blocked execution for node {node_name}", status="blocked", node_type=node_type)
             
             # 检查其他非GateNode依赖：如果有依赖节点且所有依赖节点都未成功，则本节点被阻断
             if other_deps:
@@ -216,7 +220,9 @@ class RuleEngine:
                         all_blocked_or_failed = False
                         break
                 if all_blocked_or_failed:
-                    return NodeResult(success=False, error=f"All non-gate dependencies failed or blocked for node {node_name}", status="blocked")
+                    node = self.data_flow.nodes[node_name]
+                    node_type = node.node_type if hasattr(node, 'node_type') else 'unknown'
+                    return NodeResult(success=False, error=f"All non-gate dependencies failed or blocked for node {node_name}", status="blocked", node_type=node_type)
         
         # 获取节点输入数据
         inputs = self._get_node_inputs(node_name)

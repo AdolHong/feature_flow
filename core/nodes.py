@@ -57,6 +57,22 @@ class Node(ABC):
         self.tracked_variables: List[str] = []
         # 期望的输入schema - 用于校验上游变量
         self.expected_input_schema: Dict[str, str] = {}
+        # 节点类型
+        self.node_type: str = self._get_node_type()
+    
+    def _get_node_type(self) -> str:
+        """获取节点类型，子类可以重写此方法"""
+        class_name = self.__class__.__name__
+        if class_name == "StartNode":
+            return "start"
+        elif class_name == "LogicNode":
+            return "logic"
+        elif class_name == "GateNode":
+            return "gate"
+        elif class_name == "CollectionNode":
+            return "collection"
+        else:
+            return "unknown"
     
     @abstractmethod
     def execute(self, context: Dict[str, Any], job_date: str = None, placeholders: Dict[str, Any] = None) -> NodeResult:
@@ -151,7 +167,7 @@ class StartNode(Node):
     
     def execute(self, context: Dict[str, Any], job_date: str = None, placeholders: Dict[str, Any] = None) -> NodeResult:
         """执行开始节点，不执行任何功能"""
-        return NodeResult(success=True, data={}, node_type="start")
+        return NodeResult(success=True, data={}, node_type=self.node_type)
 
 
 class GateNode(Node):
@@ -187,9 +203,9 @@ class GateNode(Node):
                 parsed_condition = parse_dynamic_parameters(self.condition, job_date, placeholders)
                 # 执行条件判断
                 self.should_continue = eval(parsed_condition, {}, local_vars)
-            return NodeResult(success=True, data={'should_continue': self.should_continue}, text_output=text_output.getvalue(), node_type="gate")
+            return NodeResult(success=True, data={'should_continue': self.should_continue}, text_output=text_output.getvalue(), node_type=self.node_type)
         except Exception as e:
-            return NodeResult(success=False, error=str(e), text_output=text_output.getvalue(), status="failed", node_type="gate")
+            return NodeResult(success=False, error=str(e), text_output=text_output.getvalue(), status="failed", node_type=self.node_type)
 
 
 class LogicNode(Node):
@@ -238,9 +254,9 @@ class LogicNode(Node):
             # 返回所有tracked_variables的值作为输出数据
             output_data = self.get_flow_context_values()
             output_data = {var: output_data[var] for var in self.tracked_variables}            
-            return NodeResult(success=True, data=output_data, text_output=text_output.getvalue(), node_type="logic")
+            return NodeResult(success=True, data=output_data, text_output=text_output.getvalue(), node_type=self.node_type)
         except Exception as e:
-            return NodeResult(success=False, error=str(e), text_output=text_output.getvalue(), status="failed", node_type="logic")
+            return NodeResult(success=False, error=str(e), text_output=text_output.getvalue(), status="failed", node_type=self.node_type)
 
 
 class CollectionNode(Node):
@@ -313,17 +329,17 @@ class CollectionNode(Node):
                     # 返回所有tracked_variables的值作为输出数据
                     output_data = self.get_flow_context_values()
                     output_data = {var: output_data[var] for var in self.tracked_variables}
-                    return NodeResult(success=True, data=output_data, text_output=text_output.getvalue(), node_type="collection")
+                    return NodeResult(success=True, data=output_data, text_output=text_output.getvalue(), node_type=self.node_type)
                     
                 except Exception as e:
-                    return NodeResult(success=False, error=str(e), text_output=text_output.getvalue(), status="failed", node_type="collection")
+                    return NodeResult(success=False, error=str(e), text_output=text_output.getvalue(), status="failed", node_type=self.node_type)
             else:
                 # 没有logic_code，返回原始收集数据
                 output_data = {'collected_data': collected_items}
-                return NodeResult(success=True, data=output_data, node_type="collection")
+                return NodeResult(success=True, data=output_data, node_type=self.node_type)
                 
         except Exception as e:
-            return NodeResult(success=False, error=str(e), status="failed", node_type="collection")
+            return NodeResult(success=False, error=str(e), status="failed", node_type=self.node_type)
 
 
 def parse_dynamic_parameters(text: str, job_date: str = None, placeholders: Dict[str, Any] = None) -> str:

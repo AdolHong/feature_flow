@@ -44,6 +44,20 @@ class RuleEngine:
         """获取所有节点"""
         return self.data_flow.nodes.copy()
     
+    def get_nodes_by_type(self, node_type: str) -> Dict[str, Node]:
+        """根据节点类型获取节点"""
+        return {name: node for name, node in self.data_flow.nodes.items() 
+                if hasattr(node, 'node_type') and node.node_type == node_type}
+    
+    def get_node_types_count(self) -> Dict[str, int]:
+        """获取各类型节点的数量统计"""
+        type_count = {}
+        for node in self.data_flow.nodes.values():
+            if hasattr(node, 'node_type'):
+                node_type = node.node_type
+                type_count[node_type] = type_count.get(node_type, 0) + 1
+        return type_count
+    
     # ==================== 依赖关系管理 ====================
     def add_dependency(self, source_node: Optional[Node], target_node: Node):
         """添加节点依赖关系，自动添加节点"""
@@ -268,6 +282,25 @@ class RuleEngine:
         """获取节点执行结果"""
         return self.execution_results.get(node_name)
     
+    def get_results_by_node_type(self, node_type: str) -> Dict[str, NodeResult]:
+        """根据节点类型获取执行结果"""
+        results = {}
+        for node_name, result in self.execution_results.items():
+            node = self.data_flow.nodes.get(node_name)
+            if node and hasattr(node, 'node_type') and node.node_type == node_type:
+                results[node_name] = result
+        return results
+    
+    def get_successful_nodes_by_type(self, node_type: str) -> List[str]:
+        """获取指定类型中成功执行的节点列表"""
+        successful_nodes = []
+        for node_name, result in self.execution_results.items():
+            node = self.data_flow.nodes.get(node_name)
+            if (node and hasattr(node, 'node_type') and 
+                node.node_type == node_type and result.success):
+                successful_nodes.append(node_name)
+        return successful_nodes
+    
     def get_final_outputs(self) -> Dict[str, Any]:
         """获取最终输出结果"""
         outputs = {}
@@ -287,6 +320,23 @@ class RuleEngine:
         blocked_nodes = sum(1 for result in self.execution_results.values() if not result.success and result.status == "blocked")
         executed_nodes = sum(1 for result in self.execution_results.values() if result.status == "executed")
         
+        # 按节点类型统计执行结果
+        node_type_results = {}
+        for node_name, result in self.execution_results.items():
+            node = self.data_flow.nodes.get(node_name)
+            if node and hasattr(node, 'node_type'):
+                node_type = node.node_type
+                if node_type not in node_type_results:
+                    node_type_results[node_type] = {'total': 0, 'successful': 0, 'failed': 0, 'blocked': 0}
+                
+                node_type_results[node_type]['total'] += 1
+                if result.success:
+                    node_type_results[node_type]['successful'] += 1
+                elif result.status == "failed":
+                    node_type_results[node_type]['failed'] += 1
+                elif result.status == "blocked":
+                    node_type_results[node_type]['blocked'] += 1
+        
         return {
             'total_nodes': total_nodes,
             'successful_nodes': successful_nodes,
@@ -296,6 +346,8 @@ class RuleEngine:
             'success_rate': successful_nodes / (total_nodes - blocked_nodes) if total_nodes > 0 else 0,
             'failed_rate': failed_nodes / (total_nodes - blocked_nodes) if total_nodes > 0 else 0,
             'execution_order': self.get_execution_order(),
+            'node_types_count': self.get_node_types_count(),
+            'node_type_results': node_type_results,
             'failed_nodes_list': [
                 node_name for node_name, result in self.execution_results.items() 
                 if not result.success and result.status == "failed"
@@ -410,6 +462,7 @@ class RuleEngine:
         node_info = {
             'name': node_name,
             'type': node.__class__.__name__,
+            'node_type': node.node_type,
             'dependencies': dependencies,
             'dependents': dependents,
             'inputs': node.inputs,
@@ -457,11 +510,19 @@ class RuleEngine:
         # 节点信息
         lines.append("\nNodes:")
         for node_name, node in self.data_flow.nodes.items():
-            lines.append(f"  {node_name} ({node.__class__.__name__})")
+            node_type_info = f" ({node.node_type})" if hasattr(node, 'node_type') else ""
+            lines.append(f"  {node_name} ({node.__class__.__name__}){node_type_info}")
             if node.tracked_variables:
                 lines.append(f"    Tracked: {node.tracked_variables}")
             if node.expected_input_schema:
                 lines.append(f"    Expected Input: {node.expected_input_schema}")
+        
+        # 节点类型统计
+        type_count = self.get_node_types_count()
+        if type_count:
+            lines.append("\nNode Types:")
+            for node_type, count in type_count.items():
+                lines.append(f"  {node_type}: {count}")
         
         # 依赖关系
         lines.append("\nDependencies:")
@@ -496,6 +557,7 @@ class RuleEngine:
             node_config = {
                 'type': node.__class__.__name__,
                 'name': node.name,
+                'node_type': node.node_type if hasattr(node, 'node_type') else 'unknown',
                 'tracked_variables': node.tracked_variables,
                 'expected_input_schema': node.expected_input_schema
             }

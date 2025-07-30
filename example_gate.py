@@ -14,7 +14,7 @@ def create_rule_engine():
     # 创建逻辑节点1：数据预处理
     preprocess_node = LogicNode("preprocess")
     preprocess_node.set_logic("""
-var = 1
+var = 3
 """)
     preprocess_node.set_tracked_variables(["var"])
 

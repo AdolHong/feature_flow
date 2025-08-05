@@ -84,8 +84,10 @@ class Parser:
             return float(value)
         elif isinstance(value, np.bool_):
             return bool(value)
+        elif isinstance(value, pd.Timestamp):
+            return str(value)
         elif isinstance(value, np.datetime64):
-            return pd.Timestamp(value).to_pydatetime()
+            return str(value)
         
         # 处理字符串类型
         if isinstance(value, str):
@@ -198,16 +200,16 @@ class Parser:
         if value.lower() in ['true', 'false', '1', '0', 'yes', 'no']:
             return value.lower() in ['true', '1', 'yes']
         
-        # 尝试转换为日期时间
-        try:
-            # 常见的日期时间格式
-            for fmt in ['%Y-%m-%d', '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S']:
-                try:
-                    return datetime.strptime(value, fmt)
-                except:
-                    continue
-        except:
-            pass
+        # # 尝试转换为日期时间
+        # try:
+        #     # 常见的日期时间格式
+        #     for fmt in ['%Y-%m-%d', '%Y-%m-%d %H:%M:%S', '%Y-%m-%dT%H:%M:%S']:
+        #         try:
+        #             return datetime.strptime(value, fmt)
+        #         except:
+        #             continue
+        # except:
+        #     pass
         
         # 如果都失败，返回原始字符串
         return value

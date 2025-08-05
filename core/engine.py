@@ -136,11 +136,11 @@ class RuleEngine:
             execution_context['job_date'] = job_date
         
         # 添加placeholders和variables
-        if placeholders:
-            execution_context.update(placeholders)
         if variables:
             execution_context.update(variables)
-        
+        if placeholders:
+            execution_context.update(placeholders)
+
         self.context = execution_context
         
         # 验证配置

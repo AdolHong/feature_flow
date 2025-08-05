@@ -352,8 +352,8 @@ def parse_dynamic_parameters(text: str, job_date: str = None, placeholders: Dict
     # 处理时间相关的占位符
     if job_date:
         try:
-            # 将job_date转换为datetime对象作为基准时间
-            base_datetime = datetime.strptime(job_date, '%Y-%m-%d %H:%M:%S')
+            # 将job_date转换为datetime对象作为基准时间，支持两种格式
+            base_datetime = parse_job_date(job_date)
             result = parse_datetime(result, base_datetime)
         except Exception as e:
             # 如果解析失败，记录错误但不抛出异常
@@ -367,3 +367,34 @@ def parse_dynamic_parameters(text: str, job_date: str = None, placeholders: Dict
                 result = result.replace(placeholder, str(value))
     
     return result
+
+
+def parse_job_date(job_date: str) -> datetime:
+    """
+    解析job_date，支持两种格式：
+    - '%Y-%m-%d' (如: '2024-01-01')
+    - '%Y-%m-%d %H:%M:%S' (如: '2024-01-01 10:30:00')
+    
+    Args:
+        job_date: 日期字符串
+        
+    Returns:
+        datetime: 解析后的datetime对象
+        
+    Raises:
+        ValueError: 如果日期格式不支持
+    """
+    # 尝试解析为完整日期时间格式
+    try:
+        return datetime.strptime(job_date, '%Y-%m-%d %H:%M:%S')
+    except ValueError:
+        pass
+    
+    # 尝试解析为仅日期格式
+    try:
+        return datetime.strptime(job_date, '%Y-%m-%d')
+    except ValueError:
+        pass
+    
+    # 如果两种格式都失败，抛出异常
+    raise ValueError(f"不支持的日期格式: {job_date}。支持的格式: 'YYYY-MM-DD' 或 'YYYY-MM-DD HH:MM:SS'")

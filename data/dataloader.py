@@ -9,6 +9,37 @@ import re
 import time
 
 
+def parse_job_datetime(job_datetime: str) -> datetime:
+    """
+    解析job_datetime，支持两种格式：
+    - '%Y-%m-%d' (如: '2024-01-01')
+    - '%Y-%m-%d %H:%M:%S' (如: '2024-01-01 10:30:00')
+    
+    Args:
+        job_datetime: 日期时间字符串
+        
+    Returns:
+        datetime: 解析后的datetime对象
+        
+    Raises:
+        ValueError: 如果日期格式不支持
+    """
+    # 尝试解析为完整日期时间格式
+    try:
+        return datetime.strptime(job_datetime, '%Y-%m-%d %H:%M:%S')
+    except ValueError:
+        pass
+    
+    # 尝试解析为仅日期格式
+    try:
+        return datetime.strptime(job_datetime, '%Y-%m-%d')
+    except ValueError:
+        pass
+    
+    # 如果两种格式都失败，抛出异常
+    raise ValueError(f"不支持的日期格式: {job_datetime}。支持的格式: 'YYYY-MM-DD' 或 'YYYY-MM-DD HH:MM:SS'")
+
+
 class DataLoader:
     """数据加载器：根据data_config从Redis中加载数据"""
     
@@ -28,7 +59,7 @@ class DataLoader:
         Args:
             data_config: 数据配置
             placeholders: 占位符值映射
-            job_datetime: 作业日期时间，格式为 %Y-%m-%d %H:%M:%S
+            job_datetime: 作业日期时间，支持格式：'YYYY-MM-DD' 或 'YYYY-MM-DD HH:MM:SS'
             
         Returns:
             加载的数据字典
@@ -38,9 +69,9 @@ class DataLoader:
         
         # 验证job_datetime格式
         try:
-            datetime.strptime(job_datetime, "%Y-%m-%d %H:%M:%S")
-        except ValueError:
-            raise ValueError(f"job_datetime格式错误，应为 %Y-%m-%d %H:%M:%S 格式，当前值: {job_datetime}")
+            parse_job_datetime(job_datetime)
+        except ValueError as e:
+            raise ValueError(f"job_datetime格式错误: {e}")
         
         # 加载所有变量
         loaded_data = {}
@@ -67,7 +98,7 @@ class DataLoader:
         Args:
             data_config: 数据配置
             placeholders: 占位符值映射
-            job_datetime: 作业日期时间，格式为 %Y-%m-%d %H:%M:%S
+            job_datetime: 作业日期时间，支持格式：'YYYY-MM-DD' 或 'YYYY-MM-DD HH:MM:SS'
             
         Returns:
             加载的数据字典
@@ -77,9 +108,9 @@ class DataLoader:
         
         # 验证job_datetime格式
         try:
-            datetime.strptime(job_datetime, "%Y-%m-%d %H:%M:%S")
-        except ValueError:
-            raise ValueError(f"job_datetime格式错误，应为 %Y-%m-%d %H:%M:%S 格式，当前值: {job_datetime}")
+            parse_job_datetime(job_datetime)
+        except ValueError as e:
+            raise ValueError(f"job_datetime格式错误: {e}")
         
         # 收集所有需要批量获取的键
         batch_keys = self._collect_batch_keys(data_config, placeholders, job_datetime)
@@ -123,7 +154,7 @@ class DataLoader:
             variable_config: 变量配置
             namespace: 命名空间
             placeholders: 占位符值映射
-            job_datetime: 作业日期时间，格式为 %Y-%m-%d %H:%M:%S
+            job_datetime: 作业日期时间，支持格式：'YYYY-MM-DD' 或 'YYYY-MM-DD HH:MM:SS'
             
         Returns:
             加载的变量数据
@@ -205,7 +236,7 @@ class DataLoader:
             base_dt = None
             if job_datetime:
                 if isinstance(job_datetime, str):
-                    base_dt = datetime.strptime(job_datetime, "%Y-%m-%d %H:%M:%S")
+                    base_dt = parse_job_datetime(job_datetime)
                 else:
                     base_dt = job_datetime
             result = parse_datetime(result, base_datetime=base_dt)
@@ -219,7 +250,7 @@ class DataLoader:
             redis_config: Redis配置
             namespace: 命名空间
             placeholders: 占位符值映射
-            job_datetime: 作业日期时间，格式为 %Y-%m-%d %H:%M:%S
+            job_datetime: 作业日期时间，支持格式：'YYYY-MM-DD' 或 'YYYY-MM-DD HH:MM:SS'
             
         Returns:
             变量值
@@ -252,7 +283,7 @@ class DataLoader:
             variable_config: 变量配置
             namespace: 命名空间
             placeholders: 占位符值映射
-            job_datetime: 作业日期时间，格式为 %Y-%m-%d %H:%M:%S
+            job_datetime: 作业日期时间，支持格式：'YYYY-MM-DD' 或 'YYYY-MM-DD HH:MM:SS'
             
         Returns:
             DataFrame格式的时间序列数据
@@ -282,7 +313,7 @@ class DataLoader:
             redis_config: Redis配置
             namespace: 命名空间
             placeholders: 占位符值映射
-            job_datetime: 作业日期时间，格式为 %Y-%m-%d %H:%M:%S
+            job_datetime: 作业日期时间，支持格式：'YYYY-MM-DD' 或 'YYYY-MM-DD HH:MM:SS'
             
         Returns:
             时间序列数据列表
@@ -293,7 +324,7 @@ class DataLoader:
         to_datetime = redis_config.get("to_datetime")
         
         # 解析job_datetime为datetime对象
-        job_dt = datetime.strptime(job_datetime, "%Y-%m-%d %H:%M:%S")
+        job_dt = parse_job_datetime(job_datetime)
         from_timestamp = None
         to_timestamp = None
         
@@ -375,7 +406,7 @@ class DataLoader:
             variable_config: 变量配置
             namespace: 命名空间
             placeholders: 占位符值映射
-            job_datetime: 作业日期时间，格式为 %Y-%m-%d %H:%M:%S
+            job_datetime: 作业日期时间，支持格式：'YYYY-MM-DD' 或 'YYYY-MM-DD HH:MM:SS'
             
         Returns:
             DataFrame格式的densets数据
@@ -411,7 +442,7 @@ class DataLoader:
             redis_config: Redis配置
             namespace: 命名空间
             placeholders: 占位符值映射
-            job_datetime: 作业日期时间，格式为 %Y-%m-%d %H:%M:%S
+            job_datetime: 作业日期时间，支持格式：'YYYY-MM-DD' 或 'YYYY-MM-DD HH:MM:SS'
             
         Returns:
             densets数据列表
@@ -422,7 +453,7 @@ class DataLoader:
         to_datetime = redis_config.get("to_datetime")
         
         # 解析job_datetime为datetime对象
-        job_dt = datetime.strptime(job_datetime, "%Y-%m-%d %H:%M:%S")
+        job_dt = parse_job_datetime(job_datetime)
         from_timestamp = None
         to_timestamp = None
         

@@ -205,7 +205,11 @@ class GateNode(Node):
                 self.should_continue = eval(parsed_condition, {}, local_vars)
             return NodeResult(success=True, data={'should_continue': self.should_continue}, text_output=text_output.getvalue(), node_type=self.node_type)
         except Exception as e:
-            return NodeResult(success=False, error=str(e), text_output=text_output.getvalue(), status="failed", node_type=self.node_type)
+            error_msg = str(e)
+            # 处理Python 2风格的异常语法错误
+            if "exceptions must derive from BaseException" in error_msg:
+                error_msg = "错误：使用了不支持的异常语法。请使用 'raise Exception(\"错误信息\")' 而不是 'raise \"错误信息\"'"
+            return NodeResult(success=False, error=error_msg, text_output=text_output.getvalue(), status="failed", node_type=self.node_type)
 
 
 class LogicNode(Node):
@@ -256,7 +260,11 @@ class LogicNode(Node):
             output_data = {var: output_data[var] for var in self.tracked_variables}            
             return NodeResult(success=True, data=output_data, text_output=text_output.getvalue(), node_type=self.node_type)
         except Exception as e:
-            return NodeResult(success=False, error=str(e), text_output=text_output.getvalue(), status="failed", node_type=self.node_type)
+            error_msg = str(e)
+            # 处理Python 2风格的异常语法错误
+            if "exceptions must derive from BaseException" in error_msg:
+                error_msg = "错误：使用了不支持的异常语法。请使用 'raise Exception(\"错误信息\")' 而不是 'raise \"错误信息\"'"
+            return NodeResult(success=False, error=error_msg, text_output=text_output.getvalue(), status="failed", node_type=self.node_type)
 
 
 class CollectionNode(Node):
@@ -332,14 +340,22 @@ class CollectionNode(Node):
                     return NodeResult(success=True, data=output_data, text_output=text_output.getvalue(), node_type=self.node_type)
                     
                 except Exception as e:
-                    return NodeResult(success=False, error=str(e), text_output=text_output.getvalue(), status="failed", node_type=self.node_type)
+                    error_msg = str(e)
+                    # 处理Python 2风格的异常语法错误
+                    if "exceptions must derive from BaseException" in error_msg:
+                        error_msg = "错误：使用了不支持的异常语法。请使用 'raise Exception(\"错误信息\")' 而不是 'raise \"错误信息\"'"
+                    return NodeResult(success=False, error=error_msg, text_output=text_output.getvalue(), status="failed", node_type=self.node_type)
             else:
                 # 没有logic_code，返回原始收集数据
                 output_data = {'collected_data': collected_items}
                 return NodeResult(success=True, data=output_data, node_type=self.node_type)
                 
         except Exception as e:
-            return NodeResult(success=False, error=str(e), status="failed", node_type=self.node_type)
+            error_msg = str(e)
+            # 处理Python 2风格的异常语法错误
+            if "exceptions must derive from BaseException" in error_msg:
+                error_msg = "错误：使用了不支持的异常语法。请使用 'raise Exception(\"错误信息\")' 而不是 'raise \"错误信息\"'"
+            return NodeResult(success=False, error=error_msg, status="failed", node_type=self.node_type)
 
 
 def parse_dynamic_parameters(text: str, job_date: str = None, placeholders: Dict[str, Any] = None) -> str:

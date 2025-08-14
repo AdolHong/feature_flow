@@ -41,12 +41,12 @@ def execute_code_safely(code: str, local_vars: Dict[str, Any], text_output: io.S
         text_output: 输出捕获对象
     """
     # 创建包含内置模块的全局命名空间，支持动态导入
-    globals_dict = {
-        '__builtins__': builtins,
-    }
+    # globals_dict = {
+    #     '__builtins__': builtins,
+    # }
     
     with redirect_stdout(text_output):
-        exec(code, globals_dict, local_vars)
+        exec(code, local_vars)
 
 
 class NodeResult:

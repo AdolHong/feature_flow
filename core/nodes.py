@@ -13,6 +13,7 @@ from datetime import datetime
 import json
 import random
 import string
+import builtins
 
 # 添加utils目录到路径
 from utils.datetime_parser import parse_datetime
@@ -28,6 +29,26 @@ def generate_random_name(length=8):
     characters = string.ascii_letters + string.digits
     random_name = ''.join(random.choice(characters) for _ in range(length))
     return random_name
+
+
+def execute_code_safely(code: str, local_vars: Dict[str, Any], text_output: io.StringIO) -> None:
+    """
+    安全地执行Python代码，支持动态导入操作
+    
+    Args:
+        code: 要执行的Python代码字符串
+        local_vars: 本地变量空间
+        text_output: 输出捕获对象
+    """
+    # 创建包含内置模块的全局命名空间，支持动态导入
+    globals_dict = {
+        '__builtins__': builtins,
+        'pd': pd,  # 预加载pandas
+        'datetime': datetime,  # 预加载datetime
+    }
+    
+    with redirect_stdout(text_output):
+        exec(code, globals_dict, local_vars)
 
 
 class NodeResult:
@@ -98,7 +119,8 @@ class Node(ABC):
     
     def add_expected_input_schema(self, variable: str, schema: str):
         """添加单个期望的输入schema"""
-        self.expected_input_schema[variable] = schema
+        if variable not in self.expected_input_schema:
+            self.expected_input_schema[variable] = schema
     
     def update_flow_context(self, variable_name: str, value: Any, source_node: str = None, context: Dict[str, Any] = None):
         """更新flow_context，如果变量已存在且时间更新，则更新"""
@@ -248,8 +270,7 @@ class LogicNode(Node):
             for key, value in local_vars.items():
                 if isinstance(value, str) and '${' in value:
                     local_vars[key] = parse_dynamic_parameters(value, job_date, placeholders)
-            with redirect_stdout(text_output):
-                exec(parsed_code, {}, local_vars)
+            execute_code_safely(parsed_code, local_vars, text_output)
 
             # 更新flow_context - 将输出数据中需要跟踪的变量添加到flow_context
             for var_name in self.tracked_variables:
@@ -326,8 +347,7 @@ class CollectionNode(Node):
                     # 解析动态参数
                     parsed_code = parse_dynamic_parameters(self.logic_code, job_date, placeholders)
                     
-                    with redirect_stdout(text_output):
-                        exec(parsed_code, local_vars, local_vars)
+                    execute_code_safely(parsed_code, local_vars, text_output)
                     
                     # 更新flow_context - 将输出数据中需要跟踪的变量添加到flow_context
                     for var_name in self.tracked_variables:

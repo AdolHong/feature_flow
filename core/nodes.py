@@ -43,8 +43,6 @@ def execute_code_safely(code: str, local_vars: Dict[str, Any], text_output: io.S
     # 创建包含内置模块的全局命名空间，支持动态导入
     globals_dict = {
         '__builtins__': builtins,
-        'pd': pd,  # 预加载pandas
-        'datetime': datetime,  # 预加载datetime
     }
     
     with redirect_stdout(text_output):
